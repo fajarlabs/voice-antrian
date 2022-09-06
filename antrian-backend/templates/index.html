@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Mesin Antrian | RaspberryPI</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+  <style>
+    .vcenter {
+    display: inline-block;
+    vertical-align: middle;
+    float: none;
+    }
+  </style>
+</head>
+<body>
+  
+<div class="container-fluid">
+  <div class="row" style="margin-top: 50px;">
+    <div class="col-sm-12">
+
+      <div class="row" style="margin-bottom : 3px;">
+        <div class="col-sm-12 vcenter">
+          <div style="background-color:blue;height:10em;border:1px solid #000">
+            <p id="title" class="text-center" style="font-size: 7em;color:white;">-</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="height: 50px ;">
+        <div class="col-sm-12 vcenter">
+          <div style="background-color:blue;height:10em;border:1px solid #000">
+            <p style="font-size: 30px;color:white;" class="text-center">ANTRIAN</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-bottom : 3px;">
+        <div class="col-sm-12 vcenter">
+          <div style="background-color:blue;height:20em;border:1px solid #000">
+            <p id="queue" class="text-center" style="font-size: 14em;color:white;">-</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="height: 50px;">
+        <div class="col-sm-12 vcenter">
+          <div style="background-color:blue;height:10em;border:1px solid #000">
+            <p class="text-center" style="font-size: 30px;color:white;">COUNTER<br /></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-bottom : 3px;">
+        <div class="col-sm-12 vcenter">
+          <div style="background-color:blue;height:10em;border:1px solid #000">
+            <p id="counter" class="text-center" style="font-size: 5em;color:white;">-</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+
+  window.blink_queue_func = (callback) => {
+    window.blink_queue = 0;
+    window.blink_queue_interval = setInterval(() => {
+      if(window.blink_queue < 20){
+        if(window.blink_queue % 2){
+          $('#queue').hide();
+        } else {
+          $('#queue').show();
+        }
+        window.blink_queue++; 
+      } else {
+        clearInterval(window.blink_queue_interval);
+        window.blink_queue_interval = null;
+        $('#queue').show();
+        callback();
+      }
+    },200);
+  };
+
+  window.blink_counter_func = () => {
+    window.blink_counter = 0;
+    window.blink_counter_interval = setInterval(() => {
+      if(window.blink_counter < 10){
+        if(window.blink_counter % 2){
+          $('#counter').hide();
+        } else {
+          $('#counter').show();
+        }
+        window.blink_counter++; 
+      } else {
+        clearInterval(window.blink_counter_interval);
+        $('#counter').show();
+        window.blink_counter_interval = null;
+      }
+    },200);
+  };
+
+  window.interval_send = null;
+  window.interval_reconnect = null;  
+  var socket_conn = () => {
+    var sock = new WebSocket("ws://"+window.location.hostname+":18080/ws");
+    sock.onopen = ()=>{
+        if(window.interval_reconnect != null) {
+          clearInterval(window.interval_reconnect);
+          window.interval_reconnect = null;
+        }
+        console.log('open')
+    }
+    sock.onerror = (e)=>{
+        console.log('error',e);
+        if(window.interval_send != null) {
+          clearInterval(window.interval_send);
+          window.interval_send = null;
+        }
+    }
+    sock.onclose = ()=>{
+        console.log('close')
+        if(window.interval_reconnect == null) {
+          window.interval_reconnect = setInterval(()=>{
+            console.log("Reconnect socket..");
+            this.socket_conn();
+          },5000);
+        }
+        
+    }
+    sock.onmessage = (e)=>{
+        let list_data = e.data.split(".");
+        let counter = list_data[0].split(":")[1];
+        let queue = list_data[1].split(":")[1];
+        let gid = list_data[2].split(":")[1];
+        let cid = list_data[3].split(":")[1];
+        let qid = list_data[4].split(":")[1];
+        let irq = list_data[5].split(":")[1];
+
+        if(irq > 0 ){
+          clearInterval(window.blink_counter_interval);
+          clearInterval(window.blink_queue_interval);
+          $('#counter').show();
+          $('#queue').show();
+          window.blink_queue_func(() => {
+            window.blink_counter_func();
+          });
+        }
+
+        var counter_label = $('#counter');
+        if(cid != ""){
+          counter_label.text(cid.toUpperCase()+"-"+counter);
+        } else {
+          if(counter.length == 1){
+            counter_label.text("00"+counter);
+          } else if(counter.length == 2){
+            counter_label.text("0"+counter);
+          } else if(counter.length == 3){
+            counter_label.text(counter);
+          }
+        }
+
+        var queue_label = $('#queue');
+        if(qid != ""){
+          queue_label.text(qid.toUpperCase()+"-"+queue);
+        } else {
+          if(queue.length == 1){
+            queue_label.text("00"+queue);
+          } else if(queue.length == 2){
+            queue_label.text("0"+queue);
+          } else if(queue.length == 3){
+            queue_label.text(queue);
+          }
+        }
+
+        var title_label = $('#title');
+        title_label.text(gid.replace("_"," "));
+    }
+
+    window.interval_send = setInterval(()=>{
+      sock.send("data/current");
+    },100);
+  };
+
+  // init connection WS
+  socket_conn();
+
+</script>
+</body>
+</html>
